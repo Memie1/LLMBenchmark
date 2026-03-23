@@ -1,6 +1,6 @@
 
 from dataclasses import dataclass
-# Llama from: 
+# Llama from: https://github.com/abetlen/llama-cpp-python
 from llama_cpp import Llama
 
 @dataclass
@@ -54,11 +54,15 @@ def load_model(preset: str) -> Llama:
     return model
 
 
+def generate_reply(
+    model: Llama,
+    messages: list[dict],
+    max_tokens: int = 128,
+    temperature: float = 0.0) -> str:
 
-def generate_reply(model: Llama, messages: list[dict], max_tokens: int = 128, temperature: float = 0.7) -> str:
     response = model.create_chat_completion(
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
     )
-    return response["choices"][0]["message"]["content"]
+    return response["choices"][0]["message"]["content"].strip()

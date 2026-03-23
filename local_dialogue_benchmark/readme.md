@@ -19,3 +19,5 @@ prompts.py:
 models.py:
 Loads the models low, medium and high
 
+NOTE FOR FUTURE JAMIE:
+plot benchmark results out in matplotlib for comparisons in dissertation
