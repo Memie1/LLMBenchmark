@@ -58,7 +58,8 @@ def generate_reply(
     model: Llama,
     messages: list[dict],
     max_tokens: int = 128,
-    temperature: float = 0.0) -> str:
+    temperature: float = 0.0) -> str: # temperature is set to 0, ideal for benchmarking but not for real use
+    
 
     response = model.create_chat_completion(
         messages=messages,

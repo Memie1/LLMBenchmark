@@ -1,7 +1,11 @@
 import json
+from pathlib import Path
 
 # Load scenarios from a JSON file, future developers might want to change the path
-def load_scenarios(path='../scenarios.json'):
+def load_scenarios(path: str | Path | None = None):
+    if path is None:
+        path = Path(__file__).resolve().parent.parent / "scenarios.json"
+
     with open(path, "r", encoding="utf-8") as f:
         scenarios = json.load(f)
     return scenarios
@@ -25,7 +29,12 @@ def build_system_prompt(scenario: dict) -> str:
 
 
 
-def build_messages(scenario: dict, dialogue_history: list) -> list:
+def build_messages(scenario: dict, dialogue_history: list | None = None) -> list:
+    if dialogue_history is None:
+        dialogue_history = []
+    elif len(dialogue_history) > 3:
+        dialogue_history = dialogue_history[-3:]  # Keep only the last 3 turns
+
     # system_prompt builds the prompt
     system_prompt = build_system_prompt(scenario)
 
@@ -37,6 +46,7 @@ def build_messages(scenario: dict, dialogue_history: list) -> list:
         messages.append({"role": "user", "content": turn['user']})
         messages.append({"role": "assistant", "content": turn['assistant']})
     
+    messages.append({"role": "user", "content": scenario["user_input"]})
     # TODO: need to allow a maximum of 3 turns to make it easy for the llms
     return messages
 
