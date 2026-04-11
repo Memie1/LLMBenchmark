@@ -101,32 +101,45 @@ def run_benchmark(preset: str):
             for scenario in scenarios:
                 print(f"Running {model_path.name}: {scenario['title']}")
 
-                messages = build_messages(scenario, [])
+                turns = scenario.get("turns", [])
+                if not turns:
+                    # Support legacy single-turn format
+                    turns = [scenario.get("user_input", "Hello")]
 
-                start = time.perf_counter()
-                reply = generate_reply(model, messages)
-                elapsed = (time.perf_counter() - start) * 1000
+                dialogue_history = []
 
-                result = evaluate_reply(scenario, reply)
+                for i, user_input in enumerate(turns):
+                    print(f"Turn {i+1}/{len(turns)}: {user_input}")
+                    messages = build_messages(scenario, dialogue_history, user_input)
 
-                writer.writerow([
-                    datetime.now().isoformat(),
-                    preset,
-                    model_path.name,
-                    scenario["title"],
-                    scenario["user_input"],
-                    reply,
-                    round(elapsed, 2),
-                    result["word_count"],
-                    result["passed_basic_checks"],
-                    result["failure_reason"],
-                    result["mentions_ai"],
-                    result["under_30_words"],
-                ])
+                    start = time.perf_counter()
+                    reply = generate_reply(model, messages)
+                    elapsed = (time.perf_counter() - start) * 1000
 
-                print(f"Reply: {reply}")
-                print(f"Time: {round(elapsed, 2)} ms")
-                print(f"Pass: {result['passed_basic_checks']}")
+                    result = evaluate_reply(scenario, reply)
+
+                    writer.writerow([
+                        datetime.now().isoformat(),
+                        preset,
+                        model_path.name,
+                        scenario["title"],
+                        user_input,
+                        reply,
+                        round(elapsed, 2),
+                        result["word_count"],
+                        result["passed_basic_checks"],
+                        result["failure_reason"],
+                        result["mentions_ai"],
+                        result["under_30_words"],
+                    ])
+
+                    print(f"Reply: {reply}")
+                    print(f"Time: {round(elapsed, 2)} ms")
+                    print(f"Pass: {result['passed_basic_checks']}")
+
+                    # Update history for next turn
+                    dialogue_history.append({"user": user_input, "assistant": reply})
+
                 print("-" * 40)
 
             del model

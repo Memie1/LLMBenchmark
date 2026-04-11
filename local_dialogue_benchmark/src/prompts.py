@@ -29,7 +29,7 @@ def build_system_prompt(scenario: dict) -> str:
 
 
 
-def build_messages(scenario: dict, dialogue_history: list | None = None) -> list:
+def build_messages(scenario: dict, dialogue_history: list | None = None, current_user_input: str | None = None) -> list:
     if dialogue_history is None:
         dialogue_history = []
     elif len(dialogue_history) > 3:
@@ -46,7 +46,8 @@ def build_messages(scenario: dict, dialogue_history: list | None = None) -> list
         messages.append({"role": "user", "content": turn['user']})
         messages.append({"role": "assistant", "content": turn['assistant']})
     
-    messages.append({"role": "user", "content": scenario["user_input"]})
+    user_input = current_user_input or scenario.get("user_input", "")
+    messages.append({"role": "user", "content": user_input})
     # TODO: need to allow a maximum of 3 turns to make it easy for the llms
     return messages
 
