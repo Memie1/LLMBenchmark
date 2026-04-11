@@ -17,7 +17,7 @@ prompts.py:
 
 
 models.py:
-Loads the models low, medium and high
+Finds compatible GGUF models inside the selected preset folder and loads them one by one
 
 NOTE FOR FUTURE JAMIE:
 plot benchmark results out in matplotlib for comparisons in dissertation
@@ -28,7 +28,35 @@ runs basic automated checks on the model output
 checks for non empty outputs, whether it mentions being an AI, or rather it follows rules
 
 benchmark_runner.py:
-ruins teh benchmarks
+runs the benchmarks
 
 plot_results:
 reads the resutls from the benchmarks, creates graphs for comparison
+
+
+
+================================
+
+Models selected:
+going for these as a benchmark for vram
+due to the size of files, I am unable to upload them to the github
+
+
+4gb = low
+8gb = medium
+16gb = high
+
+Low models:
+llama-3.2-3b-instruct-gguf: https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF
+
+
+Model folders:
+Place compatible GGUF files inside preset folders under models/.
+Example layout:
+
+models/
+- low/
+- medium/
+- high/
+
+The benchmark runner enumerates every .gguf file inside the chosen preset folder and benchmarks them sequentially.

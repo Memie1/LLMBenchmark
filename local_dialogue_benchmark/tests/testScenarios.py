@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import src.models as models_module
+from src.models import discover_model_files
 from src.prompts import build_messages, load_scenarios
 
 
@@ -38,3 +40,31 @@ def test_build_messages_limits_history_and_appends_user_input():
         {"role": "assistant", "content": "a4"},
         {"role": "user", "content": scenario["user_input"]},
     ]
+
+
+def test_discover_model_files_returns_sorted_ggufs_from_preset_folder(tmp_path, monkeypatch):
+    models_dir = tmp_path / "models"
+    low_dir = models_dir / "low"
+    low_dir.mkdir(parents=True)
+    (low_dir / "zeta.gguf").write_text("", encoding="utf-8")
+    (low_dir / "alpha.gguf").write_text("", encoding="utf-8")
+    (low_dir / "ignore.txt").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(models_module, "MODELS_DIR", models_dir)
+
+    files = discover_model_files("low")
+
+    assert [path.name for path in files] == ["alpha.gguf", "zeta.gguf"]
+
+
+def test_discover_model_files_matches_existing_directory_case(tmp_path, monkeypatch):
+    models_dir = tmp_path / "models"
+    medium_dir = models_dir / "Medium"
+    medium_dir.mkdir(parents=True)
+    (medium_dir / "model.gguf").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(models_module, "MODELS_DIR", models_dir)
+
+    files = discover_model_files("medium")
+
+    assert [path.name for path in files] == ["model.gguf"]
