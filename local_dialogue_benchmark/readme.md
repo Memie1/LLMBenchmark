@@ -33,7 +33,8 @@ runs the benchmarks
 plot_results:
 reads the resutls from the benchmarks, creates graphs for comparison
 
-
+scoring.py:
+a scoring system to check the performance and compare
 
 ================================
 
