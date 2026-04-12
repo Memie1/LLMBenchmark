@@ -13,12 +13,6 @@
       "Actually, make that three ales and a loaf of bread.",
       "What is my name and what is currently on my tab?",
       "How many total items did I just order?"
-    ],
-    "turn_keywords": [
-      ["elara"],
-      ["three ales", "3 ales", "loaf of bread", "bread"],
-      ["elara", "three ales", "3 ales", "bread"],
-      ["4", "four"]
     ]
   },
   {

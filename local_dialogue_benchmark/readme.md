@@ -61,3 +61,14 @@ models/
 - high/
 
 The benchmark runner enumerates every .gguf file inside the chosen preset folder and benchmarks them sequentially.
+
+
+======================
+
+
+
+to test:
+run
+python -m src.benchmark_runner
+python -m src.scoring
+python -m src.plot_results

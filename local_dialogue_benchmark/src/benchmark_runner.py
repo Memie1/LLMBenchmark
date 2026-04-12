@@ -5,7 +5,6 @@ import time
 import argparse
 import gc
 from pathlib import Path
-from datetime import datetime
 
 from src.prompts import load_scenarios, build_messages
 from src.models import discover_model_files, load_model, generate_reply
@@ -15,6 +14,8 @@ from src.checks import evaluate_reply
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = PROJECT_ROOT / "results"
 RESULTS_FILE = RESULTS_DIR / "benchmark_results.csv"
+SCORED_RESULTS_FILE = RESULTS_DIR / "scored_results.csv"
+PLOTS_DIR = RESULTS_DIR / "plots"
 RESULTS_COLUMNS = [
     "timestamp",
     "preset",
@@ -29,6 +30,22 @@ RESULTS_COLUMNS = [
     "mentions_ai",
     "under_30_words",
 ]
+
+# remove old results to avoid false results
+def clear_previous_outputs() -> bool:
+    cleared_anything = False
+
+    for path in (RESULTS_FILE, SCORED_RESULTS_FILE):
+        if path.exists():
+            path.unlink()
+            cleared_anything = True
+
+    if PLOTS_DIR.exists():
+        for plot_file in PLOTS_DIR.glob("*.png"):
+            plot_file.unlink()
+            cleared_anything = True
+
+    return cleared_anything
 
 
 def ensure_results_file():
@@ -80,12 +97,15 @@ def ensure_results_file():
     )
 
 
-def run_benchmark(preset: str):
+def run_benchmark(preset: str, append: bool = False):
     scenarios = load_scenarios(PROJECT_ROOT / "scenarios.json")
     model_files = discover_model_files(preset)
 
     print(f"Loaded {len(scenarios)} scenarios")
     print(f"Discovered {len(model_files)} model(s) in preset '{preset}'")
+
+    if not append and clear_previous_outputs():
+        print("Cleared previous benchmark results, scored results, and plot images")
 
     ensure_results_file()
 
@@ -119,7 +139,7 @@ def run_benchmark(preset: str):
                     result = evaluate_reply(scenario, reply)
 
                     writer.writerow([
-                        datetime.now().isoformat(),
+                        time.strftime("%Y-%m-%dT%H:%M:%S"),
                         preset,
                         model_path.name,
                         scenario["title"],
@@ -149,7 +169,12 @@ def run_benchmark(preset: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--preset", default="low", help="low / medium / high")
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="append to existing benchmark results instead of clearing previous outputs",
+    )
 
     args = parser.parse_args()
 
-    run_benchmark(args.preset)
+    run_benchmark(args.preset, append=args.append)
