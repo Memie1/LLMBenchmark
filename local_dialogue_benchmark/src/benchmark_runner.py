@@ -10,7 +10,7 @@ from src.prompts import load_scenarios, build_messages
 from src.models import discover_model_files, load_model, generate_reply
 from src.checks import evaluate_reply
 
-
+# define file paths and constants 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = PROJECT_ROOT / "results"
 RESULTS_FILE = RESULTS_DIR / "benchmark_results.csv"
