@@ -48,6 +48,16 @@ def main():
     df["final_score"] = pd.to_numeric(df["final_score"], errors="coerce")
     df["memory_score"] = pd.to_numeric(df["memory_score"], errors="coerce")
 
+    if "similarity_backend" in df.columns:
+        backend_names = sorted(df["similarity_backend"].dropna().astype(str).unique())
+        if len(backend_names) > 1:
+            raise ValueError(
+                f"Mixed similarity backends found in scored results: {backend_names}. "
+                "Do not compare benchmark runs produced by different scorers."
+            )
+        if backend_names:
+            print(f"Scored with similarity backend: {backend_names[0]}")
+
     # drop rows that are missing the values needed for the main comparisons
     df = df.dropna(subset=["response_time_ms", "final_score"])
 

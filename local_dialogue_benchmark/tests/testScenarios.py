@@ -15,11 +15,13 @@ def test_load_scenarios_returns_expected_shape():
     scenarios = load_scenarios(SCENARIOS_PATH)
 
     assert len(scenarios) >= 1
-    assert {"title", "character", "hard_rules", "user_input"}.issubset(scenarios[0])
+    assert {"title", "character", "hard_rules"}.issubset(scenarios[0])
+    assert "turns" in scenarios[0] or "user_input" in scenarios[0]
 
 
 def test_build_messages_limits_history_and_appends_user_input():
     scenario = load_scenarios(SCENARIOS_PATH)[0]
+    current_user_input = scenario["turns"][0]
     dialogue_history = [
         {"user": "u1", "assistant": "a1"},
         {"user": "u2", "assistant": "a2"},
@@ -27,10 +29,10 @@ def test_build_messages_limits_history_and_appends_user_input():
         {"user": "u4", "assistant": "a4"},
     ]
 
-    messages = build_messages(scenario, dialogue_history)
+    messages = build_messages(scenario, dialogue_history, current_user_input=current_user_input)
 
     assert messages[0]["role"] == "system"
-    assert messages[-1] == {"role": "user", "content": scenario["user_input"]}
+    assert messages[-1] == {"role": "user", "content": current_user_input}
     assert messages[1:] == [
         {"role": "user", "content": "u2"},
         {"role": "assistant", "content": "a2"},
@@ -38,7 +40,7 @@ def test_build_messages_limits_history_and_appends_user_input():
         {"role": "assistant", "content": "a3"},
         {"role": "user", "content": "u4"},
         {"role": "assistant", "content": "a4"},
-        {"role": "user", "content": scenario["user_input"]},
+        {"role": "user", "content": current_user_input},
     ]
 
 
