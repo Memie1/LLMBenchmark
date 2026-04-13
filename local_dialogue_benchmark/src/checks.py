@@ -1,6 +1,8 @@
+
 from __future__ import annotations
 
-# checks rule exists
+
+# helper to see if a scenario rule mentions a specific phrase
 def _rule_exists(scenario: dict, phrase: str) -> bool:
     phrase = phrase.lower()
     return any(phrase in rule.lower() for rule in scenario.get("hard_rules", []))
@@ -8,7 +10,7 @@ def _rule_exists(scenario: dict, phrase: str) -> bool:
 
 def _mentions_ai(reply: str) -> bool:
     lowered = reply.lower()
-    # this is just bank of words, maybe better technique needed
+    # simple phrase check is enough here because this is only a lightweight benchmark gate
     banned_phrases = [
         "as an ai",
         "i am an ai",
@@ -21,15 +23,18 @@ def _mentions_ai(reply: str) -> bool:
 
 
 def evaluate_reply(scenario: dict, reply: str | None) -> dict:
+    # clean the reply first so empty strings and whitespace are treated the same
     reply_text = (reply or "").strip()
     word_count = len(reply_text.split())
 
+    # these are the quick pass/fail checks stored in the raw benchmark csv
     checks = {
         "non_empty": bool(reply_text),
         "mentions_ai": _mentions_ai(reply_text),
         "under_30_words": True,
     }
 
+    # only enforce the word limit when that rule exists in the scenario
     if _rule_exists(scenario, "under 30 words"):
         checks["under_30_words"] = word_count <= 30
 
@@ -44,6 +49,7 @@ def evaluate_reply(scenario: dict, reply: str | None) -> dict:
     if not checks["under_30_words"]:
         failure_reasons.append("too_many_words")
 
+    # a reply passes the basic gate if none of the simple checks failed
     passed_basic_checks = len(failure_reasons) == 0
 
     return {

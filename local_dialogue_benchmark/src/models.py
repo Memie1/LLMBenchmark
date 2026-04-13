@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from llama_cpp import Llama
 
+
+# each preset is just a simple hardware profile for model loading
 @dataclass
 class ModelConfig: 
     name: str
@@ -18,6 +20,7 @@ class ModelConfig:
 
 
 MODEL_PRESETS = {
+    # low / medium / high lets the benchmark swap context size and thread count easily
     "low": ModelConfig(
         name="low",
         directory_name="low",
@@ -46,6 +49,7 @@ MODELS_DIR = PROJECT_ROOT / "models"
 
 
 def get_preset_config(preset: str) -> ModelConfig:
+    # normalize user input so lower and upper case works
     normalized_preset = preset.lower()
 
     if normalized_preset not in MODEL_PRESETS:
@@ -55,12 +59,14 @@ def get_preset_config(preset: str) -> ModelConfig:
 
 
 def resolve_preset_directory(preset: str) -> Path:
+    # first try the exact folder name from the preset config
     config = get_preset_config(preset)
     expected_dir = MODELS_DIR / config.directory_name
 
     if expected_dir.exists() and expected_dir.is_dir():
         return expected_dir
 
+    # fall back to a case-insensitive match because folder names can vary on disk
     for child in MODELS_DIR.iterdir():
         if child.is_dir() and child.name.lower() == config.directory_name.lower():
             return child
@@ -71,6 +77,7 @@ def resolve_preset_directory(preset: str) -> Path:
 
 
 def discover_model_files(preset: str) -> list[Path]:
+    # benchmark every gguf model inside the selected preset folder
     preset_dir = resolve_preset_directory(preset)
     model_files = sorted(
         path for path in preset_dir.iterdir() if path.is_file() and path.suffix.lower() == ".gguf"
@@ -83,11 +90,13 @@ def discover_model_files(preset: str) -> list[Path]:
 
 
 def load_model(model_path: str | Path, preset: str) -> Llama:
+    # import here so the rest of the project can still be inspected without loading llama_cpp early
     from llama_cpp import Llama
 
     config = get_preset_config(preset)
     resolved_model_path = Path(model_path)
 
+    # these settings come straight from the chosen preset so comparisons stay consistent
     model = Llama(
         model_path=str(resolved_model_path),
         n_ctx=config.n_ctx,
@@ -102,8 +111,9 @@ def generate_reply(
     model: Llama,
     messages: list[dict],
     max_tokens: int = 128,
-    temperature: float = 0.0) -> str: # temperature is set to 0, ideal for benchmarking but not for real use
-    
+     # temperature stays at 0 to make outputs as repeatable as possible for benchmarking
+    temperature: float = 0.0) -> str:
+   
 
     response = model.create_chat_completion(
         messages=messages,

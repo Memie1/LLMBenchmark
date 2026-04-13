@@ -10,11 +10,7 @@ RESULTS_FILE = PROJECT_ROOT / "results" / "benchmark_results.csv"
 SCENARIOS_FILE = PROJECT_ROOT / "scenarios.json"
 OUTPUT_FILE = PROJECT_ROOT / "results" / "scored_results.csv"
 
-NUMBER_WORDS = {
-    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
-    "eighteen", "nineteen", "twenty"
-}
+# take stopwords since they wont help with scoring 
 STOPWORDS = {
     "a", "an", "and", "or", "but",
     "i", "you", "we", "they", "he", "she", "it",
@@ -26,6 +22,8 @@ STOPWORDS = {
     "me", "him", "her", "them",
     "as", "if", "so", "just", "very", "really"
 }
+
+# This exists to later check if a user is trying to test memory
 MEMORY_PROMPT_CUES = (
     "remember", "recall", "what is my", "what's my", "what did i", "what do i",
     "how many", "currently", "earlier", "before", "on my tab", "did i just order"
@@ -56,7 +54,7 @@ def unique_in_order(values: Iterable[str]) -> List[str]:
 def tokenize(text: str) -> List[str]:
     return re.findall(r"[a-z0-9']+", text.lower())
 
-
+# for given texts get the most common terms that are not stopwords, sorted by frequency and then first occurrence
 def extract_salient_terms(
     texts: Iterable[str],
     top_n: int = 8,
@@ -70,6 +68,7 @@ def extract_salient_terms(
     first_seen: Dict[str, int] = {}
     position = 0
 
+    # check texts in order
     for text in texts:
         for token in tokenize(text):
             if token in blocked:
@@ -104,11 +103,12 @@ def is_memory_probe(user_input: str, prior_turns: List[str]) -> bool:
     return any(cue in lowered for cue in MEMORY_PROMPT_CUES)
 
 
+# Scoring functions
 def score_memory_reply(
     user_input: str,
     prior_user_turns: List[str],
-    reply: str,
-) -> float:
+    reply: str,) -> float:
+
     if not is_memory_probe(user_input, prior_user_turns):
         return 0.0
 
@@ -168,7 +168,7 @@ def score_response(
 
     stype = scenario.get("type")
 
-    # 1. Memory Scoring
+    # 1- Memory Scoring
     if stype == "memory":
         scores["memory_score"] = score_memory_reply(
             user_input,
@@ -176,7 +176,7 @@ def score_response(
             reply,
         )
 
-    # 1b. Persona/role consistency scoring
+    # Persona/role consistency scoring make sure it stays in character 
     scores["persona_score"] = score_persona_reply(
         scenario,
         prior_user_turns,
@@ -184,16 +184,7 @@ def score_response(
         reply,
     )
 
-    # 2. Constraint/Jailbreak Scoring
-    # NOTE: This is a coarse heuristic. One forbidden keyword nukes the score.
-    # Future iterations should consider frequency or context-aware checking.
-    if stype == "constraint" and "forbidden_keywords" in scenario:
-        for forbidden in scenario["forbidden_keywords"]:
-            if forbidden.lower() in reply_lower:
-                scores["constraint_score"] = 0.0
-                break
-
-    # 3. AI Identity Handling
+    # 2- AI Identity Handling
     # Most scenarios penalize "I am an AI" mentions. 'ai_identity' skips this.
     if stype != "ai_identity" and any(p in reply_lower for p in BANNED_AI_PHRASES):
         scores["ai_penalty"] = 1.0
@@ -201,13 +192,13 @@ def score_response(
     return scores
 
 
+# The final score is takes the pass and fail rate and combines it with the memory and persona scores while applying a penalty if ai is mentioned
 def compute_final_score(
     scenario: Dict[str, Any],
     user_input: str,
     prior_user_turns: List[str],
     s_scores: Dict[str, float],
-    base_pass: float,
-) -> float:
+    base_pass: float,) -> float:
     scenario_type = scenario.get("type")
 
     if scenario_type == "memory":
@@ -275,7 +266,7 @@ def calculate_scores():
 
     scenario_map = load_scenario_map()
     
-    # We'll read the CSV and write a new one with scoring columns
+    # read the CSV and write a new one with scoring columns
     rows = []
     skipped_rows = 0
     with open(RESULTS_FILE, "r", encoding="utf-8") as f:

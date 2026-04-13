@@ -16,6 +16,8 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 RESULTS_FILE = RESULTS_DIR / "benchmark_results.csv"
 SCORED_RESULTS_FILE = RESULTS_DIR / "scored_results.csv"
 PLOTS_DIR = RESULTS_DIR / "plots"
+
+# these are the columns saved for each benchmark turn
 RESULTS_COLUMNS = [
     "timestamp",
     "preset",
@@ -31,7 +33,7 @@ RESULTS_COLUMNS = [
     "under_30_words",
 ]
 
-# remove old results to avoid false results
+# remove old results so a fresh run does not mix with older benchmark data
 def clear_previous_outputs() -> bool:
     cleared_anything = False
 
@@ -49,6 +51,7 @@ def clear_previous_outputs() -> bool:
 
 
 def ensure_results_file():
+    # make sure the results folder exists before trying to write anything
     RESULTS_DIR.mkdir(exist_ok=True)
 
     if not RESULTS_FILE.exists():
@@ -70,6 +73,7 @@ def ensure_results_file():
     if header == RESULTS_COLUMNS:
         return
 
+    # support older csv files that were created before model_file was added
     if header == [
         "timestamp",
         "preset",
@@ -98,6 +102,7 @@ def ensure_results_file():
 
 
 def run_benchmark(preset: str, append: bool = False):
+    # load the current scenarios and find all models inside the chosen preset folder
     scenarios = load_scenarios(PROJECT_ROOT / "scenarios.json")
     model_files = discover_model_files(preset)
 
@@ -109,11 +114,12 @@ def run_benchmark(preset: str, append: bool = False):
 
     ensure_results_file()
 
-    # writes to a csv results file, to later be plotted by plot_results.py
+    # append each generated reply as a row so scoring and plotting can process it later
     with open(RESULTS_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
 
         for model_path in model_files:
+            # load one model at a time to keep memory usage predictable
             print(f"Loading model: {model_path.name} ({preset})...")
             model = load_model(model_path, preset)
             print("Model loaded\n")
@@ -126,16 +132,19 @@ def run_benchmark(preset: str, append: bool = False):
                     # Support legacy single-turn format
                     turns = [scenario.get("user_input", "Hello")]
 
+                # store the conversation so later turns can include earlier context
                 dialogue_history = []
 
                 for i, user_input in enumerate(turns):
                     print(f"Turn {i+1}/{len(turns)}: {user_input}")
                     messages = build_messages(scenario, dialogue_history, user_input)
 
+                    # time only the model generation call because that is what we want to compare
                     start = time.perf_counter()
                     reply = generate_reply(model, messages)
                     elapsed = (time.perf_counter() - start) * 1000
 
+                    # basic checks run immediately so the raw csv stores both output and quick validation
                     result = evaluate_reply(scenario, reply)
 
                     writer.writerow([
@@ -162,11 +171,13 @@ def run_benchmark(preset: str, append: bool = False):
 
                 print("-" * 40)
 
+            # free the current model before loading the next one
             del model
             gc.collect()
 
 
 if __name__ == "__main__":
+    # small cli so the same runner can be used for low / medium / high presets
     parser = argparse.ArgumentParser()
     parser.add_argument("--preset", default="low", help="low / medium / high")
     parser.add_argument(

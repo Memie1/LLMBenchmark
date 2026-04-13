@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-# Load scenarios from a JSON file, future developers might want to change the path
+
+# load the scenario list from json so the benchmark data stays editable outside the code
 def load_scenarios(path: str | Path | None = None):
     if path is None:
         path = Path(__file__).resolve().parent.parent / "scenarios.json"
@@ -12,11 +13,12 @@ def load_scenarios(path: str | Path | None = None):
 
 
 def build_system_prompt(scenario: dict) -> str:
-    # rules_text contains the rules of the scenario loaded from the JSON
+    # turn the hard rules into a numbered list so the model sees them clearly
     rules_text = "\n".join(
         f"{i+1}. {rule}" for i, rule in enumerate(scenario["hard_rules"])
     )
 
+    # the system prompt combines the character description with fixed safety / role rules
     return (
         f"{scenario['character']}\n\n"
         f"Rules:\n{rules_text}\n\n"
@@ -33,22 +35,22 @@ def build_messages(scenario: dict, dialogue_history: list | None = None, current
     if dialogue_history is None:
         dialogue_history = []
     elif len(dialogue_history) > 3:
-        dialogue_history = dialogue_history[-3:]  # Keep only the last 3 turns
+        dialogue_history = dialogue_history[-3:]  # keep only the last 3 turns so prompts do not grow forever
 
-    # system_prompt builds the prompt
+    # start every conversation with the system prompt
     system_prompt = build_system_prompt(scenario)
 
-    # messages is a list of dictionaries, where each dictionary represents a turn in the dialogue.
-    # a dictionary is defined as {"role": "user" or "assistant", "content": "the content of the turn"}
+    # messages follows the chat format expected by llama.cpp
     messages = [{"role": "system", "content": system_prompt}]
     
+    # replay earlier turns so multi-turn scenarios can test memory and consistency
     for turn in dialogue_history:
         messages.append({"role": "user", "content": turn['user']})
         messages.append({"role": "assistant", "content": turn['assistant']})
     
+    # use the current turn when provided, otherwise fall back to the legacy single-turn field
     user_input = current_user_input or scenario.get("user_input", "")
     messages.append({"role": "user", "content": user_input})
-    # TODO: need to allow a maximum of 3 turns to make it easy for the llms
     return messages
 
 

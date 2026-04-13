@@ -13,10 +13,12 @@ PLOTS_DIR = PROJECT_ROOT / "results" / "plots"
 
 
 def normalize_title(text: str) -> str:
+    # normalize titles so matching still works even if spacing/case differs
     return " ".join(text.strip().lower().split())
 
 
 def load_memory_scenarios() -> set[str]:
+    # read memory scenario titles so we can build a memory-only chart later
     if not SCENARIOS_FILE.exists():
         return set()
 
@@ -35,14 +37,18 @@ def main():
         print("No scored results file found. Run benchmark_runner and scoring first.")
         return
 
+    # clear old images first so the plots folder only shows the latest run
     PLOTS_DIR.mkdir(exist_ok=True)
     for old_plot in PLOTS_DIR.glob("*.png"):
         old_plot.unlink()
 
+    # load the scored csv because the useful charts now depend on final_score
     df = pd.read_csv(RESULTS_FILE)
     df["response_time_ms"] = pd.to_numeric(df["response_time_ms"], errors="coerce")
     df["final_score"] = pd.to_numeric(df["final_score"], errors="coerce")
     df["memory_score"] = pd.to_numeric(df["memory_score"], errors="coerce")
+
+    # drop rows that are missing the values needed for the main comparisons
     df = df.dropna(subset=["response_time_ms", "final_score"])
 
     # 1. Average response time per model
@@ -94,7 +100,7 @@ def main():
     plt.savefig(PLOTS_DIR / "speed_vs_final_score_by_model.png")
     plt.close()
 
-    # 5. Memory score per memory scenario
+    # 5. Memory score per memory scenario so memory-specific tests can be inspected separately
     memory_titles = load_memory_scenarios()
     if memory_titles:
         memory_df = df[df["scenario_title"].map(normalize_title).isin(memory_titles)]
