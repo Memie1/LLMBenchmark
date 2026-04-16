@@ -119,7 +119,6 @@ def score_response(
     scenario: Dict[str, Any],
     user_input: str,
     prior_user_turns: List[str],
-    prior_assistant_turns: List[str],
     reply: str,
 ) -> Dict[str, float]:
     # keep per-turn scoring centralized so the csv writer only deals with final fields
@@ -193,8 +192,7 @@ def compute_final_score(
 def score_csv_row(
     row: Dict[str, str],
     scenario_map: Dict[str, Any],
-    prior_user_turns: Dict[tuple[str, str], List[str]],
-    prior_assistant_turns: Dict[tuple[str, str], List[str]],
+    prior_user_turns: Dict[tuple[str, str, str], List[str]],
     similarity_backend_name: str,
 ) -> Dict[str, Any] | None:
     # earlier turns are tracked per model and scenario so multi-turn memory tests stay isolated
@@ -203,14 +201,12 @@ def score_csv_row(
     if scenario is None:
         return None
 
-    key = (row["model_file"], scenario_key)
+    key = (row.get("preset", ""), row["model_file"], scenario_key)
     previous_users = prior_user_turns.get(key, [])
-    previous_assistant = prior_assistant_turns.get(key, [])
     s_scores = score_response(
         scenario,
         row["user_input"],
         previous_users,
-        previous_assistant,
         row["raw_output"],
     )
     base_pass = 1.0 if row["passed_basic_checks"] == "True" else 0.0
@@ -220,7 +216,6 @@ def score_csv_row(
     row["similarity_backend"] = similarity_backend_name
     row["final_score"] = max(0.0, min(1.0, final))
     prior_user_turns[key] = previous_users + [row["user_input"]]
-    prior_assistant_turns[key] = previous_assistant + [row["raw_output"]]
     return row
 
 
@@ -242,15 +237,13 @@ def calculate_scores():
         base_fieldnames = reader.fieldnames or []
         fieldnames = base_fieldnames + ["memory_score", "persona_score", "constraint_score", "ai_penalty", "similarity_backend", "final_score"]
         # store running turn history so each row can be scored with the context that existed at that point
-        prior_user_turns: Dict[tuple[str, str], List[str]] = {}
-        prior_assistant_turns: Dict[tuple[str, str], List[str]] = {}
+        prior_user_turns: Dict[tuple[str, str, str], List[str]] = {}
 
         for row in reader:
             scored_row = score_csv_row(
                 row,
                 scenario_map,
                 prior_user_turns,
-                prior_assistant_turns,
                 similarity_backend_name,
             )
             if scored_row is None:
@@ -290,8 +283,16 @@ def calculate_scores():
 
     df = pd.DataFrame(rows)
     df["final_score"] = pd.to_numeric(df["final_score"])
+    if "preset" in df.columns:
+        df["model_label"] = df["preset"].fillna("").astype(str).str.strip()
+        df["model_label"] = df.apply(
+            lambda row: f"{row['preset']} / {row['model_file']}" if str(row.get("preset", "")).strip() else row["model_file"],
+            axis=1,
+        )
+    else:
+        df["model_label"] = df["model_file"]
 
-    summary = df.groupby("model_file")["final_score"].mean().sort_values(ascending=False)
+    summary = df.groupby("model_label")["final_score"].mean().sort_values(ascending=False)
     print("\n--- Final Model Rankings (Scored) ---")
     print(summary)
 

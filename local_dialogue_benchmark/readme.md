@@ -69,7 +69,15 @@ The benchmark runner enumerates every .gguf file inside the chosen preset folder
 
 to test:
 run
-python -m src.benchmark_runner
+
+python -m src.benchmark_runner --preset low
+python -m src.benchmark_runner --preset medium
+python -m src.benchmark_runner --preset both
+
 python -m src.scoring
 python -m src.plot_results
+
+
+
+If you run more than one preset in a single benchmark pass, scoring and plots will keep the preset column so low and medium can be compared in the same results set.
 

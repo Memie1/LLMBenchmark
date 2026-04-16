@@ -7,7 +7,7 @@ import gc
 from pathlib import Path
 
 from src.prompts import load_scenarios, build_messages
-from src.models import discover_model_files, load_model, generate_reply
+from src.models import MODEL_PRESETS, discover_model_files, load_model, generate_reply
 from src.checks import evaluate_reply
 
 # define file paths and constants 
@@ -101,13 +101,114 @@ def ensure_results_file():
     )
 
 
-def run_benchmark(preset: str, append: bool = False):
-    # load the current scenarios and find all models inside the chosen preset folder
-    scenarios = load_scenarios(PROJECT_ROOT / "scenarios.json")
+def parse_preset_selection(preset_selection: str) -> list[str]:
+    normalized_selection = preset_selection.strip().lower()
+    if not normalized_selection:
+        raise ValueError("Preset selection cannot be empty.")
+
+    if normalized_selection == "all":
+        return list(MODEL_PRESETS)
+
+    aliases = {
+        "both": ["low", "medium"],
+        "compare": ["low", "medium"],
+    }
+    if normalized_selection in aliases:
+        return aliases[normalized_selection]
+
+    presets: list[str] = []
+    seen: set[str] = set()
+    for raw_preset in normalized_selection.replace("+", ",").split(","):
+        preset = raw_preset.strip()
+        if not preset:
+            continue
+        if preset not in MODEL_PRESETS:
+            valid_presets = ", ".join(MODEL_PRESETS)
+            raise ValueError(f"Unknown preset '{preset}'. Expected one of: {valid_presets}, both, all.")
+        if preset not in seen:
+            presets.append(preset)
+            seen.add(preset)
+
+    if not presets:
+        raise ValueError("Preset selection did not contain any valid presets.")
+
+    return presets
+
+
+def run_preset_benchmark(
+    preset: str,
+    scenarios: list[dict],
+    writer: csv.writer,
+):
     model_files = discover_model_files(preset)
 
-    print(f"Loaded {len(scenarios)} scenarios")
     print(f"Discovered {len(model_files)} model(s) in preset '{preset}'")
+
+    for model_path in model_files:
+        # load one model at a time to keep memory usage predictable
+        print(f"Loading model: {model_path.name} ({preset})...")
+        model = load_model(model_path, preset)
+        print("Model loaded\n")
+
+        for scenario in scenarios:
+            print(f"Running {model_path.name}: {scenario['title']}")
+
+            turns = scenario.get("turns", [])
+            if not turns:
+                # Support legacy single-turn format
+                turns = [scenario.get("user_input", "Hello")]
+
+            # store the conversation so later turns can include earlier context
+            dialogue_history = []
+
+            for i, user_input in enumerate(turns):
+                print(f"Turn {i+1}/{len(turns)}: {user_input}")
+                messages = build_messages(scenario, dialogue_history, user_input)
+
+                # time only the model generation call because that is what we want to compare
+                start = time.perf_counter()
+                reply = generate_reply(model, messages)
+                elapsed = (time.perf_counter() - start) * 1000
+
+                # basic checks run immediately so the raw csv stores both output and quick validation
+                result = evaluate_reply(scenario, reply)
+
+                writer.writerow([
+                    time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    preset,
+                    model_path.name,
+                    scenario["title"],
+                    user_input,
+                    reply,
+                    round(elapsed, 2),
+                    result["word_count"],
+                    result["passed_basic_checks"],
+                    result["failure_reason"],
+                    result["mentions_ai"],
+                    result["under_30_words"],
+                ])
+
+                print(f"Reply: {reply}")
+                print(f"Time: {round(elapsed, 2)} ms")
+                print(f"Pass: {result['passed_basic_checks']}")
+
+                # Update history for next turn
+                dialogue_history.append({"user": user_input, "assistant": reply})
+
+            print("-" * 40)
+
+        # free the current model before loading the next one
+        del model
+        gc.collect()
+
+
+def run_benchmark(preset: str, append: bool = False):
+    # load the current scenarios once, then run one or more preset folders in sequence
+    scenarios = load_scenarios(PROJECT_ROOT / "scenarios.json")
+    presets = parse_preset_selection(preset)
+
+    print(f"Loaded {len(scenarios)} scenarios")
+    print(f"Selected preset(s): {', '.join(presets)}")
 
     if not append and clear_previous_outputs():
         print("Cleared previous benchmark results, scored results, and plot images")
@@ -117,69 +218,18 @@ def run_benchmark(preset: str, append: bool = False):
     # append each generated reply as a row so scoring and plotting can process it later
     with open(RESULTS_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-
-        for model_path in model_files:
-            # load one model at a time to keep memory usage predictable
-            print(f"Loading model: {model_path.name} ({preset})...")
-            model = load_model(model_path, preset)
-            print("Model loaded\n")
-
-            for scenario in scenarios:
-                print(f"Running {model_path.name}: {scenario['title']}")
-
-                turns = scenario.get("turns", [])
-                if not turns:
-                    # Support legacy single-turn format
-                    turns = [scenario.get("user_input", "Hello")]
-
-                # store the conversation so later turns can include earlier context
-                dialogue_history = []
-
-                for i, user_input in enumerate(turns):
-                    print(f"Turn {i+1}/{len(turns)}: {user_input}")
-                    messages = build_messages(scenario, dialogue_history, user_input)
-
-                    # time only the model generation call because that is what we want to compare
-                    start = time.perf_counter()
-                    reply = generate_reply(model, messages)
-                    elapsed = (time.perf_counter() - start) * 1000
-
-                    # basic checks run immediately so the raw csv stores both output and quick validation
-                    result = evaluate_reply(scenario, reply)
-
-                    writer.writerow([
-                        time.strftime("%Y-%m-%dT%H:%M:%S"),
-                        preset,
-                        model_path.name,
-                        scenario["title"],
-                        user_input,
-                        reply,
-                        round(elapsed, 2),
-                        result["word_count"],
-                        result["passed_basic_checks"],
-                        result["failure_reason"],
-                        result["mentions_ai"],
-                        result["under_30_words"],
-                    ])
-
-                    print(f"Reply: {reply}")
-                    print(f"Time: {round(elapsed, 2)} ms")
-                    print(f"Pass: {result['passed_basic_checks']}")
-
-                    # Update history for next turn
-                    dialogue_history.append({"user": user_input, "assistant": reply})
-
-                print("-" * 40)
-
-            # free the current model before loading the next one
-            del model
-            gc.collect()
+        for selected_preset in presets:
+            run_preset_benchmark(selected_preset, scenarios, writer)
 
 
 if __name__ == "__main__":
     # small cli so the same runner can be used for low / medium / high presets
     parser = argparse.ArgumentParser()
-    parser.add_argument("--preset", default="low", help="low / medium / high")
+    parser.add_argument(
+        "--preset",
+        default="low",
+        help="low / medium / high / both / all or a comma-separated list like low,medium",
+    )
     parser.add_argument(
         "--append",
         action="store_true",

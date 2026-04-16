@@ -32,6 +32,14 @@ def load_memory_scenarios() -> set[str]:
     }
 
 
+def build_model_label(row: pd.Series) -> str:
+    preset = str(row.get("preset", "")).strip()
+    model_file = str(row["model_file"]).strip()
+    if preset:
+        return f"{preset} / {model_file}"
+    return model_file
+
+
 def main():
     if not RESULTS_FILE.exists():
         print("No scored results file found. Run benchmark_runner and scoring first.")
@@ -47,6 +55,7 @@ def main():
     df["response_time_ms"] = pd.to_numeric(df["response_time_ms"], errors="coerce")
     df["final_score"] = pd.to_numeric(df["final_score"], errors="coerce")
     df["memory_score"] = pd.to_numeric(df["memory_score"], errors="coerce")
+    df["model_label"] = df.apply(build_model_label, axis=1)
 
     if "similarity_backend" in df.columns:
         backend_names = sorted(df["similarity_backend"].dropna().astype(str).unique())
@@ -63,7 +72,7 @@ def main():
 
     # 1. Average response time per model
     plt.figure()
-    df.groupby("model_file")["response_time_ms"].mean().sort_values().plot(kind="bar")
+    df.groupby("model_label")["response_time_ms"].mean().sort_values().plot(kind="bar")
     plt.title("Average Response Time per Model")
     plt.ylabel("ms")
     plt.xticks(rotation=45, ha="right")
@@ -83,7 +92,7 @@ def main():
 
     # 3. Average final score per model
     plt.figure()
-    df.groupby("model_file")["final_score"].mean().sort_values(ascending=False).plot(kind="bar")
+    df.groupby("model_label")["final_score"].mean().sort_values(ascending=False).plot(kind="bar")
     plt.title("Average Final Score per Model")
     plt.ylabel("Final Score")
     plt.xticks(rotation=45, ha="right")
@@ -92,7 +101,7 @@ def main():
     plt.close()
 
     # 4. Speed vs average final score by model
-    summary = df.groupby("model_file").agg({
+    summary = df.groupby("model_label").agg({
         "response_time_ms": "mean",
         "final_score": "mean"
     })
@@ -100,8 +109,8 @@ def main():
     plt.figure()
     plt.scatter(summary["response_time_ms"], summary["final_score"])
 
-    for model_file, row in summary.iterrows():
-        plt.text(row["response_time_ms"], row["final_score"], model_file)
+    for model_label, row in summary.iterrows():
+        plt.text(row["response_time_ms"], row["final_score"], model_label)
 
     plt.xlabel("Avg Response Time (ms)")
     plt.ylabel("Average Final Score")
@@ -109,6 +118,29 @@ def main():
     plt.tight_layout()
     plt.savefig(PLOTS_DIR / "speed_vs_final_score_by_model.png")
     plt.close()
+
+    preset_names = []
+    if "preset" in df.columns:
+        preset_names = sorted(df["preset"].dropna().astype(str).str.strip().unique())
+
+    if len(preset_names) > 1:
+        plt.figure()
+        df.groupby("preset")["response_time_ms"].mean().sort_values().plot(kind="bar")
+        plt.title("Average Response Time per Preset")
+        plt.ylabel("ms")
+        plt.xticks(rotation=0)
+        plt.tight_layout()
+        plt.savefig(PLOTS_DIR / "avg_response_time_per_preset.png")
+        plt.close()
+
+        plt.figure()
+        df.groupby("preset")["final_score"].mean().sort_values(ascending=False).plot(kind="bar")
+        plt.title("Average Final Score per Preset")
+        plt.ylabel("Final Score")
+        plt.xticks(rotation=0)
+        plt.tight_layout()
+        plt.savefig(PLOTS_DIR / "avg_final_score_per_preset.png")
+        plt.close()
 
     # 5. Memory score per memory scenario so memory-specific tests can be inspected separately
     memory_titles = load_memory_scenarios()
