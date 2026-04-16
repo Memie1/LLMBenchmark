@@ -65,6 +65,34 @@ def test_memory_score_tracks_balance_after_deposit():
 
     assert score >= 0.9
 
+# state diff check 
+def test_memory_score_penalizes_vague_balance_reply():
+    scenario = get_scenario("Bank Balance Update Memory Test")
+    prior_turns = scenario["turns"][:2]
+
+    score = score_memory_reply(
+        scenario,
+        scenario["turns"][2],
+        prior_turns,
+        "Your balance changed after the deposit.",
+    )
+
+    assert score < 0.4
+
+
+def test_memory_score_penalizes_wrong_updated_tab():
+    scenario = get_scenario("Merchant Memory Test")
+    prior_turns = scenario["turns"][:2]
+
+    score = score_memory_reply(
+        scenario,
+        scenario["turns"][2],
+        prior_turns,
+        "Your name is Elara, and your tab has two ales and a loaf of bread.",
+    )
+
+    assert score < 0.7
+
 
 def test_memory_score_uses_character_name_when_user_asks_your_name():
     scenario = get_scenario("Bank Balance Update Memory Test")

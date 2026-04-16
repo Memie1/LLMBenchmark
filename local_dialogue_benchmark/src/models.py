@@ -107,6 +107,12 @@ def load_model(model_path: str | Path, preset: str) -> Llama:
     return model
 
 
+def strip_think_tags(text: str) -> str:
+    import re
+    # some models emit <think>...</think> reasoning blocks that pollute the visible reply
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
 def generate_reply(
     model: Llama,
     messages: list[dict],
@@ -120,4 +126,5 @@ def generate_reply(
         max_tokens=max_tokens,
         temperature=temperature,
     )
-    return response["choices"][0]["message"]["content"].strip()
+    raw = response["choices"][0]["message"]["content"].strip()
+    return strip_think_tags(raw)

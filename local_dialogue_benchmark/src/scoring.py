@@ -4,7 +4,13 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from src.intent_detection import looks_like_memory_probe, looks_like_risky_request
-from src.scenario_state import build_memory_references, normalize_text, structured_reference_score
+from src.scenario_state import (
+    build_memory_references,
+    build_memory_state_checks,
+    normalize_text,
+    score_memory_state_diff,
+    structured_reference_score,
+)
 from src.security_rules import extract_secret_values, leaks_secret
 from src.semantic_similarity import get_similarity_backend
 
@@ -52,9 +58,19 @@ def score_memory_reply(
     prior_user_turns: List[str],
     reply: str,
 ) -> float:
+    memory_score, _ = score_memory_components(scenario, user_input, prior_user_turns, reply)
+    return memory_score
+
+
+def score_memory_components(
+    scenario: Dict[str, Any],
+    user_input: str,
+    prior_user_turns: List[str],
+    reply: str,
+) -> tuple[float, float]:
     # memory scoring compares against a short expected reference answer for that turn
     if not is_memory_probe(user_input, prior_user_turns):
-        return 0.0
+        return 0.0, 0.0
 
     references = build_memory_references(
         scenario,
@@ -63,12 +79,19 @@ def score_memory_reply(
         similarity,
     )
     if not references:
-        return 0.0
+        return 0.0, 0.0
 
-    return max(
+    reference_score = max(
         max(similarity(reply, reference), structured_reference_score(reference, reply))
         for reference in references
     )
+    state_checks = build_memory_state_checks(scenario, user_input, prior_user_turns)
+    if not state_checks:
+        return reference_score, 0.0
+
+    state_diff_score = score_memory_state_diff(state_checks, reply)
+    memory_score = (0.35 * reference_score) + (0.65 * state_diff_score)
+    return max(0.0, min(1.0, memory_score)), state_diff_score
 
 
 def score_persona_reply(
@@ -125,13 +148,14 @@ def score_response(
     reply_lower = reply.lower()
     scores = {
         "memory_score": 0.0,
+        "state_diff_score": 0.0,
         "persona_score": 0.0,
         "constraint_score": 1.0,
         "ai_penalty": 0.0,
     }
 
     if scenario.get("type") == "memory":
-        scores["memory_score"] = score_memory_reply(
+        scores["memory_score"], scores["state_diff_score"] = score_memory_components(
             scenario,
             user_input,
             prior_user_turns,
@@ -235,7 +259,7 @@ def calculate_scores():
     with open(RESULTS_FILE, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         base_fieldnames = reader.fieldnames or []
-        fieldnames = base_fieldnames + ["memory_score", "persona_score", "constraint_score", "ai_penalty", "similarity_backend", "final_score"]
+        fieldnames = base_fieldnames + ["memory_score", "state_diff_score", "persona_score", "constraint_score", "ai_penalty", "similarity_backend", "final_score"]
         # store running turn history so each row can be scored with the context that existed at that point
         prior_user_turns: Dict[tuple[str, str, str], List[str]] = {}
 
@@ -295,6 +319,80 @@ def calculate_scores():
     summary = df.groupby("model_label")["final_score"].mean().sort_values(ascending=False)
     print("\n--- Final Model Rankings (Scored) ---")
     print(summary)
+
+    print_per_scenario_delta(df)
+    print_format_vs_capability(df)
+
+
+def print_per_scenario_delta(df) -> None:
+    import pandas as pd
+
+    if "model_label" not in df.columns or "scenario_title" not in df.columns:
+        return
+
+    pivot = df.pivot_table(
+        index="scenario_title",
+        columns="model_label",
+        values="final_score",
+        aggfunc="mean",
+    )
+    if pivot.shape[1] < 2:
+        return
+
+    best_col = pivot.mean().idxmax()
+    worst_col = pivot.mean().idxmin()
+    pivot["delta"] = pivot[best_col] - pivot[worst_col]
+    pivot = pivot.sort_values("delta", ascending=False)
+
+    print(f"\n--- Per-Scenario Delta ({best_col} vs {worst_col}) ---")
+    with pd.option_context("display.float_format", "{:.3f}".format, "display.max_rows", 100):
+        print(pivot[[best_col, worst_col, "delta"]])
+
+
+def print_format_vs_capability(df) -> None:
+    import pandas as pd
+
+    if "model_label" not in df.columns:
+        return
+
+    numeric_cols = {
+        "passed_basic_checks": df["passed_basic_checks"].map({"True": 1.0, "False": 0.0, True: 1.0, False: 0.0}).astype(float)
+        if "passed_basic_checks" in df.columns else None,
+        "persona_score": pd.to_numeric(df.get("persona_score"), errors="coerce"),
+        "memory_score": pd.to_numeric(df.get("memory_score"), errors="coerce"),
+        "state_diff_score": pd.to_numeric(df.get("state_diff_score"), errors="coerce"),
+        "constraint_score": pd.to_numeric(df.get("constraint_score"), errors="coerce"),
+        "ai_penalty": pd.to_numeric(df.get("ai_penalty"), errors="coerce"),
+    }
+
+    format_cols = ["passed_basic_checks", "ai_penalty"]
+    capability_cols = ["persona_score", "memory_score", "state_diff_score", "constraint_score"]
+
+    parts = {}
+    for col_name, series in numeric_cols.items():
+        if series is not None:
+            parts[col_name] = series
+
+    if not parts:
+        return
+
+    breakdown = pd.DataFrame(parts, index=df.index)
+    breakdown["model_label"] = df["model_label"]
+
+    grouped = breakdown.groupby("model_label").mean()
+
+    available_format = [c for c in format_cols if c in grouped.columns]
+    available_capability = [c for c in capability_cols if c in grouped.columns]
+
+    if available_format:
+        print("\n--- Format Compliance (per model) ---")
+        with pd.option_context("display.float_format", "{:.3f}".format):
+            print(grouped[available_format].sort_index())
+
+    if available_capability:
+        print("\n--- Capability Scores (per model) ---")
+        with pd.option_context("display.float_format", "{:.3f}".format):
+            print(grouped[available_capability].sort_index())
 
 
 if __name__ == "__main__":
